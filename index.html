@@ -347,14 +347,12 @@
     ctx.moveTo(c - 9*k, c); ctx.lineTo(c + 9*k, c); ctx.moveTo(c, c - 9*k); ctx.lineTo(c, c + 9*k); ctx.stroke();
     ctx.lineWidth = 0.75 * k; ctx.strokeStyle = 'rgba(47,122,104,.95)'; ctx.stroke(); ctx.restore();
   }
-  let lensC = null;                               // lens centre on screen
+  let lensC = null, lensDrag = null;                               // lens centre on screen
   const LENS_SIZE = 230;
   function showLens(fx, fy) {
     // Touch: the lens floats above the finger so the finger doesn't hide it.
     const r = LENS_SIZE / 2;
-    let lift = lastType === 'touch' ? 140 : 0;
-    if (fy - lift - r < 0) lift = Math.max(0, fy - r);
-    lensC = {x: fx, y: fy - lift};
+    lensC = {x: fx, y: fy};
     drawLens();
   }
   function drawLens() {
@@ -403,7 +401,7 @@
     pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
-      pinch = {d: Math.hypot(a.x - b.x, a.y - b.y), s: scale};
+      pinch = {d: Math.hypot(a.x - b.x, a.y - b.y), s: scale}; lensDrag = null;
       lens.style.display = 'none';
       if (lensTask) { lensTask.cancel(); }
     } else {
@@ -411,14 +409,27 @@
       const now = Date.now();
       if (!lensOn && now - lastTap < 300) zoomAt(scale * 2, e.clientX, e.clientY);
       lastTap = now;
-      if (lensOn) showLens(e.clientX, e.clientY); else stage.classList.add('dragging');
+      if (lensOn) {
+        if (e.pointerType === 'mouse') showLens(e.clientX, e.clientY);
+        else {                              // touch: slide the lens, no jumping
+          if (!lensC) lensC = {x: stage.clientWidth / 2, y: stage.clientHeight / 2};
+          lensDrag = {fx: e.clientX, fy: e.clientY, lx: lensC.x, ly: lensC.y};
+          drawLens();
+        }
+      } else stage.classList.add('dragging');
     }
   });
   stage.addEventListener('pointermove', e => {
     if (!page) return;
     if (lensOn && !pinch && pointers.size < 2 && (e.pointerType === 'mouse' || pointers.has(e.pointerId))) {
       if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
-      lastType = e.pointerType; showLens(e.clientX, e.clientY); return;
+      lastType = e.pointerType;
+      if (e.pointerType !== 'mouse' && lensDrag) {
+        lensC = {x: Math.max(0, Math.min(stage.clientWidth, lensDrag.lx + e.clientX - lensDrag.fx)),
+                 y: Math.max(0, Math.min(stage.clientHeight, lensDrag.ly + e.clientY - lensDrag.fy))};
+        drawLens();
+      } else if (e.pointerType === 'mouse') showLens(e.clientX, e.clientY);
+      return;
     }
     if (!pointers.has(e.pointerId)) return;
     pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
@@ -434,7 +445,7 @@
     if (pointers.size < 2) pinch = null;
     if (pointers.size === 1) { const p = [...pointers.values()][0]; last = {x: p.x, y: p.y}; }
     if (pointers.size === 0) {
-      last = null; stage.classList.remove('dragging');
+      last = null; lensDrag = null; stage.classList.remove('dragging');
       render();
     }
   };
@@ -493,6 +504,10 @@
     for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
     emb.textContent = '';
     $('empty').classList.add('hidden');
+    if (emb.dataset.noopen) {               // view-only build: no way to open other files
+      document.querySelectorAll('.openbtn').forEach(l => l.remove());
+      const seps = document.querySelectorAll('#bar .sep'); if (seps.length > 1) seps[seps.length - 1].remove();
+    }
     openData(data, emb.dataset.name || 'Document', emb.dataset.type || '');
   }
   // Link option: ?file=name.pdf (a file next to this page, or a full https:// address that allows it)
