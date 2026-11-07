@@ -495,6 +495,29 @@
     $('empty').classList.add('hidden');
     openData(data, emb.dataset.name || 'Document', emb.dataset.type || '');
   }
+  // Link option: ?file=name.pdf (a file next to this page, or a full https:// address that allows it)
+  // and optionally &page=3 for PDFs.  Example: .../magnifier/?file=family-tree.pdf
+  const params = new URLSearchParams(location.search);
+  const want = params.get('file');
+  if (!(emb && emb.textContent === '') && want) {
+    const startPage = parseInt(params.get('page'), 10) || 1;
+    const nm = decodeURIComponent(want.split('/').pop().split('?')[0]) || 'Document';
+    $('empty').classList.add('hidden');
+    status('Loading ' + nm + '…');
+    (async () => {
+      try {
+        const res = await fetch(new URL(want, location.href).href);
+        if (!res.ok) throw new Error(res.status === 404 ? 'file not found' : 'server said ' + res.status);
+        const data = new Uint8Array(await res.arrayBuffer());
+        await openData(data, nm, res.headers.get('content-type') || '');
+        if (mode === 'pdf' && startPage > 1) await showPage(startPage);
+      } catch (err) {
+        $('empty').classList.remove('hidden');
+        status('Couldn\u2019t load ' + nm + ': ' + (err.message || err) + '. You can still open a file yourself.');
+        setTimeout(() => status(''), 8000);
+      }
+    })();
+  }
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(fit, 150); });
 })();
 </script>
